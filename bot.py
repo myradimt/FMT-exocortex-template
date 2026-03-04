@@ -1,23 +1,15 @@
 import os
 import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
-import anthropic
-
-import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
-import anthropic
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, CommandHandler, filters, ContextTypes
 import anthropic
-from datetime import datetime
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
 
-claude = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+def get_claude():
+    return anthropic.Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
 
 # Главное меню
 def main_menu():
@@ -56,28 +48,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     prompt = prompts.get(data, "Помоги пользователю.")
-    
-    response = claude.messages.create(
+
+    response = get_claude().messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
         system="Ты IWE-ассистент. Отвечай кратко, по делу, на русском. Знаешь протоколы ОРЗ, WP Gate, Capture-to-Pack, MEMORY.md.",
         messages=[{"role": "user", "content": prompt}]
     )
-    
+
     reply = response.content[0].text
     await query.message.reply_text(reply, reply_markup=main_menu())
 
 # Обычные сообщения
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
-    
-    response = claude.messages.create(
+
+    response = get_claude().messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
         system="Ты IWE-ассистент. Отвечай кратко, по делу, на русском. Знаешь протоколы ОРЗ, WP Gate, Capture-to-Pack, MEMORY.md.",
         messages=[{"role": "user", "content": user_text}]
     )
-    
+
     reply = response.content[0].text
     await update.message.reply_text(reply, reply_markup=main_menu())
 
