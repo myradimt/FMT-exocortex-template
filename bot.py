@@ -6,6 +6,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, CommandHandler, filters, ContextTypes
 import anthropic
 
+token = os.getenv("TELEGRAM_TOKEN", "").strip()
+print("TELEGRAM_TOKEN sanity:", "ok" if (":" in token and "os.environ" not in token) else "bad")
+print("TELEGRAM_TOKEN startswith:", token[:6], "has_colon:", (":" in token), "len:", len(token))
+
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 def get_claude():
