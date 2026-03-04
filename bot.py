@@ -9,7 +9,7 @@ import anthropic
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 def get_claude():
-    return anthropic.Anthropic(api_key=os.environ.get("CLAUDE_API_KEY"))
+    return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 # Главное меню
 def main_menu():
