@@ -1,19 +1,36 @@
 import os
-import asyncio
+import requests
 from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, CommandHandler, filters, ContextTypes
 import anthropic
 
-token = os.getenv("TELEGRAM_TOKEN", "").strip()
-print("TELEGRAM_TOKEN sanity:", "ok" if (":" in token and "os.environ" not in token) else "bad")
-print("TELEGRAM_TOKEN startswith:", token[:6], "has_colon:", (":" in token), "len:", len(token))
-
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+GITHUB_REPO = "myradimt/FMT-exocortex-template"
 
 def get_claude():
     return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+def load_memory():
+    """Загружает MEMORY.md из GitHub репозитория"""
+    url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/memory/MEMORY.md"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return response.text
+    except Exception:
+        pass
+    return ""
+
+def build_system_prompt():
+    """Строит системный промпт с актуальным содержимым MEMORY.md"""
+    memory = load_memory()
+    base = "Ты IWE-ассистент. Отвечай кратко, по делу, на русском. Знаешь протоколы ОРЗ, WP Gate, Capture-to-Pack, MEMORY.md."
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    if memory:
+        return f"{base}\n\nТекущая дата и время: {now}\n\n=== MEMORY.md ===\n{memory}"
+    return f"{base}\n\nТекущая дата и время: {now}"
 
 # Главное меню
 def main_menu():
@@ -42,12 +59,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     prompts = {
-        "plan": "Составь краткий план на сегодня в стиле IWE. Напомни про WP Gate и протокол ОРЗ.",
-        "open": "Помоги открыть рабочую сессию по протоколу ОРЗ. Спроси какая задача и проверь WP Gate.",
-        "close": "Помоги закрыть рабочую сессию по протоколу ОРЗ. Напомни про Capture, коммит и обновление MEMORY.md.",
-        "note": "Пользователь хочет сделать заметку. Попроси текст заметки и подтверди что сохранишь её.",
-        "task": "Помоги сформулировать новый РП (рабочий продукт) по правилам IWE — существительное, измеримый артефакт.",
-        "question": "Пользователь задаст вопрос по базе знаний IWE. Попроси его написать вопрос.",
+        "plan": "Составь краткий план на сегодня в стиле IWE. Используй данные из MEMORY.md — активные проекты, приоритеты, незакрытые РП. Напомни про WP Gate и протокол ОРЗ.",
+        "open": "Помоги открыть рабочую сессию по протоколу ОРЗ. Посмотри в MEMORY.md — что сейчас в работе? Спроси какая задача и проверь WP Gate.",
+        "close": "Помоги закрыть рабочую сессию по протоколу ОРЗ. Напомни про Capture, коммит и обновление MEMORY.md. Что нужно зафиксировать?",
+        "note": "Пользователь хочет сделать заметку. Попроси текст заметки. После получения — предложи краткую формулировку для MEMORY.md.",
+        "task": "Помоги сформулировать новый РП (рабочий продукт) по правилам IWE — существительное, измеримый артефакт. Посмотри в MEMORY.md чтобы не дублировать существующие задачи.",
+        "question": "Пользователь задаст вопрос по базе знаний IWE. Используй MEMORY.md для ответа. Попроси написать вопрос.",
         "lesson": "Пользователь хочет записать урок или инсайт. Попроси описать что узнал и сформулируй в виде правила для MEMORY.md.",
     }
 
@@ -56,7 +73,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = get_claude().messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
-        system="Ты IWE-ассистент. Отвечай кратко, по делу, на русском. Знаешь протоколы ОРЗ, WP Gate, Capture-to-Pack, MEMORY.md.",
+        system=build_system_prompt(),
         messages=[{"role": "user", "content": prompt}]
     )
 
@@ -70,7 +87,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = get_claude().messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
-        system="Ты IWE-ассистент. Отвечай кратко, по делу, на русском. Знаешь протоколы ОРЗ, WP Gate, Capture-to-Pack, MEMORY.md.",
+        system=build_system_prompt(),
         messages=[{"role": "user", "content": user_text}]
     )
 
