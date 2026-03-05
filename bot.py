@@ -1,6 +1,7 @@
 import os
 import requests
 from datetime import datetime
+from collections import defaultdict
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, CommandHandler, filters, ContextTypes
@@ -8,6 +9,10 @@ import anthropic
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GITHUB_REPO = "myradimt/FMT-exocortex-template"
+
+# История диалогов — хранится в памяти, до 20 сообщений на пользователя
+conversation_history = defaultdict(list)
+MAX_HISTORY = 20
 
 def get_claude():
     return anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
@@ -32,6 +37,15 @@ def build_system_prompt():
         return f"{base}\n\nТекущая дата и время: {now}\n\n=== MEMORY.md ===\n{memory}"
     return f"{base}\n\nТекущая дата и время: {now}"
 
+def add_to_history(user_id: int, role: str, content: str):
+    """Добавляет сообщение в историю, обрезая до MAX_HISTORY"""
+    conversation_history[user_id].append({"role": role, "content": content})
+    if len(conversation_history[user_id]) > MAX_HISTORY * 2:
+        conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY * 2:]
+
+def get_history(user_id: int) -> list:
+    return conversation_history[user_id]
+
 # Главное меню
 def main_menu():
     keyboard = [
@@ -42,11 +56,14 @@ def main_menu():
          InlineKeyboardButton("🔒 Закрытие сессии", callback_data="close")],
         [InlineKeyboardButton("❓ Вопрос к базе знаний", callback_data="question")],
         [InlineKeyboardButton("📊 Урок / инсайт", callback_data="lesson")],
+        [InlineKeyboardButton("🗑 Очистить историю", callback_data="clear")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    conversation_history[user_id].clear()
     await update.message.reply_text(
         "👋 Привет! Я твой IWE-ассистент.\nВыбери действие:",
         reply_markup=main_menu()
@@ -57,6 +74,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    user_id = query.from_user.id
+
+    if data == "clear":
+        conversation_history[user_id].clear()
+        await query.message.reply_text("🗑 История очищена!", reply_markup=main_menu())
+        return
 
     prompts = {
         "plan": "Составь краткий план на сегодня в стиле IWE. Используй данные из MEMORY.md — активные проекты, приоритеты, незакрытые РП. Напомни про WP Gate и протокол ОРЗ.",
@@ -70,28 +93,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     prompt = prompts.get(data, "Помоги пользователю.")
 
+    add_to_history(user_id, "user", prompt)
+
     response = get_claude().messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
         system=build_system_prompt(),
-        messages=[{"role": "user", "content": prompt}]
+        messages=get_history(user_id)
     )
 
     reply = response.content[0].text
+    add_to_history(user_id, "assistant", reply)
+
     await query.message.reply_text(reply, reply_markup=main_menu())
 
 # Обычные сообщения
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
     user_text = update.message.text
+
+    add_to_history(user_id, "user", user_text)
 
     response = get_claude().messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1000,
         system=build_system_prompt(),
-        messages=[{"role": "user", "content": user_text}]
+        messages=get_history(user_id)
     )
 
     reply = response.content[0].text
+    add_to_history(user_id, "assistant", reply)
+
     await update.message.reply_text(reply, reply_markup=main_menu())
 
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
