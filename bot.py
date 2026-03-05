@@ -390,15 +390,16 @@ async def send_weekly_digest(app):
 
 # ─── Запуск ───────────────────────────────────────────────────────────────────
 
-app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+async def post_init(application):
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(send_weekly_digest, "cron", day_of_week="sun", hour=9, minute=0, args=[application])
+    scheduler.start()
+
+app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("menu", menu_command))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-scheduler = AsyncIOScheduler()
-scheduler.add_job(send_weekly_digest, "cron", day_of_week="sun", hour=9, minute=0, args=[app])
-scheduler.start()
 
 print("IWE-бот запущен!")
 app.run_polling()
